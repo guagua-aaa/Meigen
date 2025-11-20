@@ -1,0 +1,5 @@
+{
+  "name": "Weekly Data Tracker",
+  "description": "A React-based data visualization and tracking dashboard for weekly metrics, featuring charts, Excel export, and historical data comparison.",
+  "requestFramePermissions": []
+}
