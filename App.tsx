@@ -8,46 +8,65 @@ import TableSection from './components/TableSection';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 // --- Helper Component for Setup Guide ---
-const SetupGuide = () => (
+const SetupGuide = ({ errorMode = false }: { errorMode?: boolean }) => (
   <div className="max-w-2xl mx-auto mt-10 p-8 bg-white rounded-xl shadow-lg border border-blue-100">
-    <h1 className="text-2xl font-bold text-slate-800 mb-4">☁️ 开启多人协作模式</h1>
-    <p className="text-slate-600 mb-6">
-      为了让大家看到同一份数据，我们需要连接到一个免费的云数据库 (Supabase)。
-      请按照以下步骤操作：
-    </p>
+    <h1 className="text-2xl font-bold text-slate-800 mb-4">
+      {errorMode ? '⚠️ 数据库表未创建' : '☁️ 开启多人协作模式'}
+    </h1>
+    
+    {!errorMode && (
+      <p className="text-slate-600 mb-6">
+        为了让大家看到同一份数据，我们需要连接到一个免费的云数据库 (Supabase)。
+        请按照以下步骤操作：
+      </p>
+    )}
+
+    {errorMode && (
+      <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+        <p className="text-red-700 font-bold">检测到连接成功，但找不到数据表。</p>
+        <p className="text-red-600 text-sm">请务必执行下方的 SQL 代码来初始化数据库。</p>
+      </div>
+    )}
 
     <div className="space-y-6">
-      <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-        <h3 className="font-bold text-blue-700 mb-2">第一步：获取数据库密钥</h3>
-        <ol className="list-decimal list-inside text-sm text-slate-700 space-y-2">
-          <li>访问 <a href="https://supabase.com" target="_blank" className="text-blue-600 underline">supabase.com</a> 并注册/登录。</li>
-          <li>点击 "New Project" 创建一个新项目。</li>
-          <li>创建完成后，进入 <strong>Settings</strong> (齿轮图标) -&gt; <strong>API</strong>。</li>
-          <li>找到 <strong>Project URL</strong> 和 <strong>anon public key</strong>。</li>
-          <li>打开代码文件 <code>supabaseClient.ts</code>，将这两个值填入对应位置。</li>
-        </ol>
-      </div>
+      {!errorMode && (
+        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <h3 className="font-bold text-blue-700 mb-2">第一步：获取数据库密钥</h3>
+          <ol className="list-decimal list-inside text-sm text-slate-700 space-y-2">
+            <li>访问 <a href="https://supabase.com" target="_blank" className="text-blue-600 underline">supabase.com</a> 并注册/登录。</li>
+            <li>点击 "New Project" 创建一个新项目。</li>
+            <li>创建完成后，进入 <strong>Settings</strong> (齿轮图标) -&gt; <strong>API</strong>。</li>
+            <li>找到 <strong>Project URL</strong> 和 <strong>anon public key</strong>。</li>
+            <li>打开代码文件 <code>supabaseClient.ts</code>，将这两个值填入对应位置。</li>
+          </ol>
+        </div>
+      )}
 
       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-        <h3 className="font-bold text-blue-700 mb-2">第二步：创建数据表</h3>
-        <p className="text-sm text-slate-600 mb-2">在 Supabase 左侧菜单点击 <strong>SQL Editor</strong>，点击 <strong>New query</strong>，粘贴以下代码并点击 <strong>Run</strong>：</p>
+        <h3 className="font-bold text-blue-700 mb-2">
+          {errorMode ? '操作步骤：创建数据表' : '第二步：创建数据表'}
+        </h3>
+        <p className="text-sm text-slate-600 mb-2">
+          在 Supabase 左侧菜单点击 <strong>SQL Editor</strong>，点击 <strong>New query</strong>，粘贴以下代码并点击 <strong className="text-green-600">Run</strong>：
+        </p>
         <div className="bg-slate-800 text-slate-200 p-3 rounded text-xs font-mono overflow-x-auto relative group">
-          <pre>{`create table weekly_reports (
+          <pre>{`-- 1. 创建数据表
+create table if not exists weekly_reports (
   date text primary key,
   metrics jsonb
-);`}</pre>
+);
+
+-- 2. 关闭权限锁 (RLS)，允许所有人读写数据
+alter table weekly_reports disable row level security;`}</pre>
           <button 
-            onClick={() => navigator.clipboard.writeText(`create table weekly_reports (\n  date text primary key,\n  metrics jsonb\n);`)}
+            onClick={() => navigator.clipboard.writeText(`create table if not exists weekly_reports (\n  date text primary key,\n  metrics jsonb\n);\nalter table weekly_reports disable row level security;`)}
             className="absolute top-2 right-2 bg-slate-600 hover:bg-slate-500 text-white px-2 py-1 rounded text-xs"
           >
             复制 SQL
           </button>
         </div>
+        <p className="mt-2 text-xs text-slate-500">注意：执行成功后，请刷新本页面。</p>
       </div>
-    </div>
-    
-    <div className="mt-6 text-center text-sm text-slate-500">
-      完成配置后，刷新此页面即可开始使用。
     </div>
   </div>
 );
@@ -55,6 +74,7 @@ const SetupGuide = () => (
 const App: React.FC = () => {
   const [data, setData] = useState<DataEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tableMissing, setTableMissing] = useState(false);
   
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const now = new Date();
@@ -70,6 +90,7 @@ const App: React.FC = () => {
   const fetchData = async () => {
     if (!isSupabaseConfigured) return;
     setLoading(true);
+    setTableMissing(false);
     try {
       const { data: rows, error } = await supabase
         .from('weekly_reports')
@@ -87,9 +108,14 @@ const App: React.FC = () => {
         }));
         setData(list);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching data:', error);
-      alert('读取数据失败，请检查 Supabase 配置');
+      // PostgreSQL code 42P01 means "relation does not exist" (table missing)
+      if (error.code === '42P01' || error.message?.includes('relation') || error.message?.includes('does not exist')) {
+        setTableMissing(true);
+      } else {
+        alert('读取数据失败: ' + error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -99,8 +125,14 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
+  // Case 1: Keys are missing
   if (!isSupabaseConfigured) {
     return <SetupGuide />;
+  }
+
+  // Case 2: Keys are present, but Table is missing
+  if (tableMissing) {
+    return <SetupGuide errorMode={true} />;
   }
 
   const handleInputChange = (key: string, value: string) => {
@@ -123,8 +155,6 @@ const App: React.FC = () => {
     });
 
     // 2. Check for existence (Overwrite logic)
-    // We check our local state first to avoid an extra network call, 
-    // but for strict consistency we could check DB. Local state is usually fine here.
     const existingEntry = data.find(d => d.date === selectedDate);
 
     if (existingEntry) {
@@ -135,7 +165,6 @@ const App: React.FC = () => {
     setLoading(true);
     try {
       // 3. Upsert to Supabase
-      // We store 'date' as the primary key, and 'metrics' as a JSONB blob
       const { error } = await supabase
         .from('weekly_reports')
         .upsert({ 
